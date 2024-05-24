@@ -24,7 +24,8 @@ func listSecrets(w io.Writer, project string, filter string) []string {
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
-		panic(fmt.Errorf("failed to create secretmanager client: %w", err))
+		fmt.Printf("ERROR: failed to create secretmanager client: %v", err)
+		os.Exit(1)
 	}
 	defer client.Close()
 
@@ -44,7 +45,8 @@ func listSecrets(w io.Writer, project string, filter string) []string {
 		}
 
 		if err != nil {
-			panic(fmt.Errorf("failed to list secrets: %w", err))
+			fmt.Printf("ERROR: failed to list secrets: %v", err)
+			os.Exit(1)
 		}
 		secrets = append(secrets, resp.Name)
 		fmt.Fprintf(w, "Found secret %s\n", resp.Name)
@@ -60,7 +62,7 @@ func listSecretVersions(w io.Writer, parent string) error {
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create secretmanager client: %w", err)
+		return fmt.Errorf("failed to create secretmanager client: %v", err)
 	}
 	defer client.Close()
 
@@ -78,7 +80,7 @@ func listSecretVersions(w io.Writer, parent string) error {
 		}
 
 		if err != nil {
-			return fmt.Errorf("failed to list secret versions: %w", err)
+			return fmt.Errorf("failed to list secret versions: %v", err)
 		}
 
 		fmt.Fprintf(w, "Found secret version %s with state %s\n",
@@ -95,7 +97,8 @@ func getSecretVersion(w io.Writer, name string) *secretmanagerpb.SecretVersion {
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
-		panic(fmt.Errorf("failed to create secretmanager client: %w", err))
+		fmt.Printf("ERROR: failed to create secretmanager client: %v", err)
+		os.Exit(1)
 	}
 	defer client.Close()
 
@@ -107,7 +110,8 @@ func getSecretVersion(w io.Writer, name string) *secretmanagerpb.SecretVersion {
 	// Call the API.
 	result, err := client.GetSecretVersion(ctx, req)
 	if err != nil {
-		panic(fmt.Errorf("failed to get secret: %w", err))
+		fmt.Printf("ERROR: failed to get secret: %v", err)
+		os.Exit(1)
 	}
 
 	// replication := result.Replication.Replication
@@ -124,7 +128,8 @@ func accessSecretVersion(name string) string {
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
-		panic(fmt.Errorf("failed to create secretmanager client: %w", err))
+		fmt.Printf("ERROR: failed to create secretmanager client: %v", err)
+		os.Exit(1)
 	}
 	defer client.Close()
 
@@ -136,14 +141,16 @@ func accessSecretVersion(name string) string {
 	// Call the API.
 	result, err := client.AccessSecretVersion(ctx, req)
 	if err != nil {
-		panic(fmt.Errorf("failed to access secret version: %w", err))
+		fmt.Printf("ERROR: failed to access secret version: %v", err)
+		os.Exit(1)
 	}
 
 	// Verify the data checksum.
 	crc32c := crc32.MakeTable(crc32.Castagnoli)
 	checksum := int64(crc32.Checksum(result.Payload.Data, crc32c))
 	if checksum != *result.Payload.DataCrc32C {
-		panic(fmt.Errorf("data corruption detected"))
+		fmt.Printf("ERROR: data corruption detected")
+		os.Exit(1)
 	}
 
 	return string(result.Payload.Data[:])
@@ -155,7 +162,8 @@ func buildSecretPath(p string, sn string, sv string) string {
 	} else {
 		v, err := strconv.Atoi(sv)
 		if err != nil {
-			panic(fmt.Errorf("unable to convert secret '%s' version to integer error '%w'", sv, err))
+			fmt.Printf("ERROR: unable to convert secret '%s' version to integer error '%v'", sv, err)
+			os.Exit(1)
 		}
 		return fmt.Sprintf("projects/%s/secrets/%s/versions/%d", p, sn, v)
 	}
@@ -166,7 +174,8 @@ func strToEnvs(sData string) []string {
 	var data map[string]string
 	err := json.Unmarshal([]byte(sData), &data)
 	if err != nil {
-		panic(fmt.Errorf("couldnt unmarshal string '%w'", err))
+		fmt.Printf("ERROR: couldnt unmarshal string '%v'", err)
+		os.Exit(1)
 	}
 
 	// Create a slice to store the formatted strings
@@ -204,12 +213,14 @@ func main() {
 
 	an := os.Getenv("APP_NAME")
 	if an == "" {
-		panic(fmt.Errorf("APP_NAME not set"))
+		fmt.Printf("ERROR: APP_NAME not set")
+		os.Exit(1)
 	}
 
 	appPath := os.Getenv("APP_BINARY_PATH")
 	if appPath == "" {
-		panic(fmt.Errorf("APP_BINARY_PATH not set"))
+		fmt.Printf("ERROR: APP_BINARY_PATH not set")
+		os.Exit(1)
 	}
 
 	sv := os.Getenv("SECRET_VERSION")
@@ -219,7 +230,7 @@ func main() {
 	sValue := accessSecretVersion(spath)
 
 	envs := strToEnvs(sValue)
-	appArgs := []string{"/host_app/main.py"}
+	appArgs := []string{"main.py"}
 	execProcess(appPath, appArgs, envs)
 
 }
