@@ -5,126 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"os"
 	"slices"
-	"strconv"
 	"syscall"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
-	"google.golang.org/api/iterator"
+	"github.com/alecthomas/kong"
 )
 
-// listSecrets lists all secrets in the given project.
-func listSecrets(w io.Writer, project string, filter string) []string {
-	// parent := "projects/my-project"
-
-	// Create the client.
-	ctx := context.Background()
-	client, err := secretmanager.NewClient(ctx)
-	if err != nil {
-		fmt.Printf("ERROR: failed to create secretmanager client: %v", err)
-		os.Exit(1)
-	}
-	defer client.Close()
-
-	// Build the request.
-	req := &secretmanagerpb.ListSecretsRequest{
-		Parent: project,
-		Filter: filter,
-	}
-
-	// Call the API.
-	it := client.ListSecrets(ctx, req)
-	var secrets []string
-	for {
-		resp, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-
-		if err != nil {
-			fmt.Printf("ERROR: failed to list secrets: %v", err)
-			os.Exit(1)
-		}
-		secrets = append(secrets, resp.Name)
-		fmt.Fprintf(w, "Found secret %s\n", resp.Name)
-	}
-
-	return secrets
-}
-
-func listSecretVersions(w io.Writer, parent string) error {
-	// parent := "projects/my-project/secrets/my-secret"
-
-	// Create the client.
-	ctx := context.Background()
-	client, err := secretmanager.NewClient(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create secretmanager client: %v", err)
-	}
-	defer client.Close()
-
-	// Build the request.
-	req := &secretmanagerpb.ListSecretVersionsRequest{
-		Parent: parent,
-	}
-
-	// Call the API.
-	it := client.ListSecretVersions(ctx, req)
-	for {
-		resp, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-
-		if err != nil {
-			return fmt.Errorf("failed to list secret versions: %v", err)
-		}
-
-		fmt.Fprintf(w, "Found secret version %s with state %s\n",
-			resp.Name, resp.State)
-	}
-
-	return nil
-}
-
-func getSecretVersion(w io.Writer, name string) *secretmanagerpb.SecretVersion {
-	// name := "projects/my-project/secrets/my-secret"
-
-	// Create the client.
-	ctx := context.Background()
-	client, err := secretmanager.NewClient(ctx)
-	if err != nil {
-		fmt.Printf("ERROR: failed to create secretmanager client: %v", err)
-		os.Exit(1)
-	}
-	defer client.Close()
-
-	// Build the request.
-	req := &secretmanagerpb.GetSecretVersionRequest{
-		Name: name,
-	}
-
-	// Call the API.
-	result, err := client.GetSecretVersion(ctx, req)
-	if err != nil {
-		fmt.Printf("ERROR: failed to get secret: %v", err)
-		os.Exit(1)
-	}
-
-	// replication := result.Replication.Replication
-	create_time := result.CreateTime
-	fmt.Fprintf(w, "Found secret %s with created '%s' \n", result.Name, create_time)
-	return result
-}
-
 func accessSecretVersion(name string) string {
-	// name := "projects/my-project/secrets/my-secret/versions/5"
-	// name := "projects/my-project/secrets/my-secret/versions/latest"
-
-	// Create the client.
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
@@ -133,19 +23,16 @@ func accessSecretVersion(name string) string {
 	}
 	defer client.Close()
 
-	// Build the request.
 	req := &secretmanagerpb.AccessSecretVersionRequest{
 		Name: name,
 	}
 
-	// Call the API.
 	result, err := client.AccessSecretVersion(ctx, req)
 	if err != nil {
 		fmt.Printf("ERROR: failed to access secret version: %v", err)
 		os.Exit(1)
 	}
 
-	// Verify the data checksum.
 	crc32c := crc32.MakeTable(crc32.Castagnoli)
 	checksum := int64(crc32.Checksum(result.Payload.Data, crc32c))
 	if checksum != *result.Payload.DataCrc32C {
@@ -156,21 +43,11 @@ func accessSecretVersion(name string) string {
 	return string(result.Payload.Data[:])
 }
 
-func buildSecretPath(p string, sn string, sv string) string {
-	if sv == "" {
-		return fmt.Sprintf("projects/%s/secrets/%s/versions/latest", p, sn)
-	} else {
-		v, err := strconv.Atoi(sv)
-		if err != nil {
-			fmt.Printf("ERROR: unable to convert secret '%s' version to integer error '%v'", sv, err)
-			os.Exit(1)
-		}
-		return fmt.Sprintf("projects/%s/secrets/%s/versions/%d", p, sn, v)
-	}
+func buildSecretPath(p string, sName string, sValue string) string {
+	return fmt.Sprintf("projects/%s/secrets/%s/versions/%s", p, sName, sValue)
 }
 
 func strToEnvs(sData string) []string {
-	// Unmarshal the JSON data into a map[string]string
 	var data map[string]string
 	err := json.Unmarshal([]byte(sData), &data)
 	if err != nil {
@@ -178,10 +55,7 @@ func strToEnvs(sData string) []string {
 		os.Exit(1)
 	}
 
-	// Create a slice to store the formatted strings
 	var envs []string
-
-	// Iterate over the map and format the key-value pairs
 	for key, value := range data {
 		envs = append(envs, fmt.Sprintf("%s=%s", key, value))
 	}
@@ -190,47 +64,29 @@ func strToEnvs(sData string) []string {
 }
 
 func execProcess(execPath string, args []string, env []string) {
-	// Print a message before executing the new process
 	fmt.Printf("## Executing: '%s %s'\n", execPath, args)
 	finalArgs := slices.Insert(args, 0, "python3")
-	// Execute the new process
+
 	err := syscall.Exec(execPath, finalArgs, env)
 	if err != nil {
-		// If there is an error, print it and exit
 		fmt.Printf("Error executing new process: %v\n", err)
 		os.Exit(1)
 	}
 }
 
+type CLI struct {
+	SecretName    string   `flag:"" required:"" env:"SECRET_NAME" help:"Secret Name. Required."`
+	Project       string   `flag:"" required:"" env:"PROJECT" help:"Project. Required."`
+	SecretVersion string   `flag:"" name:"secret-version" env:"SECRET_VERSION" default:"latest" optional:"" help:"Secret version. Defaults to 'latest'"`
+	Cmd           []string `arg:"" name:"cmd" required:"" help:"Path to binary and any options"`
+}
+
 func main() {
+	var cli CLI
+	kong.Parse(&cli)
 
-	project := "skim-stage-k8-misc"
-
-	f := os.Getenv("FILTER")
-	if f == "" {
-		fmt.Println("## FILTER not set")
-	}
-
-	an := os.Getenv("APP_NAME")
-	if an == "" {
-		fmt.Printf("ERROR: APP_NAME not set")
-		os.Exit(1)
-	}
-
-	appPath := os.Getenv("APP_BINARY_PATH")
-	if appPath == "" {
-		fmt.Printf("ERROR: APP_BINARY_PATH not set")
-		os.Exit(1)
-	}
-
-	sv := os.Getenv("SECRET_VERSION")
-	spath := buildSecretPath(project, an, sv)
-
-	fmt.Printf("## Getting secret: '%s'\n", spath)
-	sValue := accessSecretVersion(spath)
-
+	sValue := accessSecretVersion(fmt.Sprintf("projects/%s/secrets/%s/versions/%s", cli.Project, cli.SecretName, cli.SecretVersion))
 	envs := strToEnvs(sValue)
-	appArgs := []string{"main.py"}
-	execProcess(appPath, appArgs, envs)
 
+	execProcess(cli.Cmd[0], cli.Cmd[1:], envs)
 }

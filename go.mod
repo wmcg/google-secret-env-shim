@@ -1,10 +1,10 @@
-module github.com/wmcg
+module github.com/google-secret-env-shim
 
 go 1.22.3
 
 require (
 	cloud.google.com/go/secretmanager v1.13.0
-	google.golang.org/api v0.180.0
+	github.com/alecthomas/kong v0.9.0
 )
 
 require (
@@ -33,6 +33,7 @@ require (
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
+	google.golang.org/api v0.180.0 // indirect
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240429193739-8cf5692501f6 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240429193739-8cf5692501f6 // indirect
