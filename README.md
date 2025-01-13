@@ -1,5 +1,5 @@
 ### Build
-go build -o gses .
+docker build -t gses:latest . && docker run -v $PWD/build/:/build -it gses:latest cp -rp /usr/local/bin/gses /build/
 
 
 should be built statically

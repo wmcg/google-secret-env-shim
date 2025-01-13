@@ -31,7 +31,7 @@ func main() {
 	cmdPath := cli.Cmd[0]
 	cmdArgs := cli.Cmd[1:]
 
-	secretsPath := "./secrets/"
+	secretsPath := "/var/secrets/..data/"
 
 	if cli.SecretMode == "file" {
 		envs := readFromFiles(secretsPath)
