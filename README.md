@@ -1,11 +1,17 @@
-### Build
-docker build -t gses:latest . && docker run -v $PWD/build/:/build -it gses:latest cp -rp /usr/local/bin/gses /build/
+### Build linux/amd64 binary
+```shell
+$ docker build -t gses:latest . && docker run -v $PWD/build/:/build -it gses:latest cp -rp /usr/local/bin/gses /build/
+```
 
-
-should be built statically
+### Build / run for local platform
+```shell
+$ go build -o gses . # builds
+$ go run . -- /usr/bin/env # builds and runs (executing /usr/bin/env)
+```
+should be built statically for production
 ### Use
 
-- dont forget the full path to the binary
+- dont forget the full path to the binary as gses doesnt load PATH
 
 ```
 # passing as flags

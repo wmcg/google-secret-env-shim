@@ -33,29 +33,33 @@ func main() {
 
 	secretsPath := "/var/secrets/..data/"
 
+	// we want currently set env vars as well as any additional we will add
+	currentEnv := os.Environ()
+
+	var envs []string
 	if cli.SecretMode == "file" {
-		envs := readFromFiles(secretsPath)
-		execBinary(cmdPath, cmdArgs, envs)
+		envs = readFromFiles(secretsPath)
 	} else if cli.SecretMode == "api" {
 		sValue := accessSecretVersion(fmt.Sprintf("projects/%s/secrets/%s/versions/%s", cli.Project, cli.SecretName, cli.SecretVersion))
-		envs := strToEnvs(sValue)
+		envs = strToEnvs(sValue)
 		if cli.Verbose {
-			fmt.Printf("## Found %d ENV VARs in the secret:\n", len(envs))
+			fmt.Printf("## gses - Found %d ENV VARs in the secret:\n", len(envs))
 			for _, env := range envs {
-				fmt.Printf("## %s\n", env)
+				fmt.Printf("## gses - %s\n", env)
 			}
 		}
-		execBinary(cmdPath, cmdArgs, envs)
 	} else {
-		fmt.Printf("Must pass either 'file' or 'api' to secret-mode")
+		fmt.Printf("## gses - Must pass either 'file' or 'api' to secret-mode")
 	}
+	execBinary(cmdPath, cmdArgs, append(envs, currentEnv...))
+
 }
 
 func accessSecretVersion(name string) string {
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
-		fmt.Printf("## ERROR: failed to create secretmanager client: %v", err)
+		fmt.Printf("## gses - ERROR: failed to create secretmanager client: %v", err)
 		os.Exit(1)
 	}
 	defer client.Close()
@@ -66,29 +70,25 @@ func accessSecretVersion(name string) string {
 
 	result, err := client.AccessSecretVersion(ctx, req)
 	if err != nil {
-		fmt.Printf("## ERROR: failed to access secret version: %v", err)
+		fmt.Printf("## gses - ERROR: failed to access secret version: %v", err)
 		os.Exit(1)
 	}
 
 	crc32c := crc32.MakeTable(crc32.Castagnoli)
 	checksum := int64(crc32.Checksum(result.Payload.Data, crc32c))
 	if checksum != *result.Payload.DataCrc32C {
-		fmt.Printf("## ERROR: data corruption detected")
+		fmt.Printf("## gses - ERROR: data corruption detected")
 		os.Exit(1)
 	}
 
 	return string(result.Payload.Data[:])
 }
 
-func buildSecretPath(p string, sName string, sValue string) string {
-	return fmt.Sprintf("projects/%s/secrets/%s/versions/%s", p, sName, sValue)
-}
-
 func strToEnvs(sData string) []string {
 	var data map[string]string
 	err := json.Unmarshal([]byte(sData), &data)
 	if err != nil {
-		fmt.Printf("## ERROR: couldnt unmarshal string '%v'", err)
+		fmt.Printf("## gses - ERROR: couldnt unmarshal string '%v'", err)
 		os.Exit(1)
 	}
 
@@ -122,36 +122,38 @@ func readFromFiles(secretsPath string) []string {
 
 	walkErr := filepath.WalkDir(secretsPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("error accessing path %s: %v", path, err)
+			return fmt.Errorf("## gses - error accessing path %s: %v", path, err)
 		}
 
-		// Skip directories
 		if d.IsDir() {
 			return nil
 		}
 
-		// Open the file
 		file, err := os.Open(path)
 		if err != nil {
-			return fmt.Errorf("error opening file %s: %v", path, err)
+			return fmt.Errorf("## gses - error opening file %s: %v", path, err)
 		}
-		// Ensure the file is closed
 		defer file.Close()
 
-		// Read the content
 		secret, err := io.ReadAll(file)
 		if err != nil {
-			return fmt.Errorf("error reading file %s: %v", path, err)
+			return fmt.Errorf("## gses -  error reading file %s: %v", path, err)
 		}
 
-		// Append to envs
 		envs = append(envs, fmt.Sprintf("%s=%s", filepath.Base(path), string(secret)))
 
 		return nil
 	})
 	if walkErr != nil {
-		fmt.Printf("Error walking through secretsPath: %v\n", walkErr)
+		fmt.Printf("## gses - Error walking through secretsPath: %v\n", walkErr)
 	}
 
 	return envs
+}
+
+func readCurrentEnvs() {
+	envVars := os.Environ() // Returns a slice of strings in "KEY=VALUE" format
+	for _, env := range envVars {
+		fmt.Println(env)
+	}
 }
